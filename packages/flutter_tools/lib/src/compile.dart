@@ -18,6 +18,7 @@ import 'base/logger.dart';
 import 'base/platform.dart';
 import 'build_info.dart';
 import 'convert.dart';
+import 'aop/aspectd.dart';
 
 /// The target model describes the set of core libraries that are available within
 /// the SDK.
@@ -235,6 +236,9 @@ class KernelCompiler {
     required List<String> dartDefines,
     required PackageConfig packageConfig,
   }) async {
+
+    await AspectdHook.enableAspectd();
+
     final String frontendServer = _artifacts.getArtifactPath(
       Artifact.frontendServerSnapshotForEngineDartSdk
     );
@@ -264,6 +268,8 @@ class KernelCompiler {
         mainUri = newMainDart.path;
       }
     }
+
+    bool aopConfig = AspectdHook.configFileExists();
 
     final List<String> command = <String>[
       engineDartPath,
@@ -311,9 +317,15 @@ class KernelCompiler {
         '--platform',
         platformDill,
       ],
+      if (aopConfig) ...<String>[
+        '--aop',
+        '1',
+      ],
       ...?extraFrontEndOptions,
       mainUri,
     ];
+
+    print(command.join(' '));
 
     _logger.printTrace(command.join(' '));
     final Process server = await _processManager.start(command);
@@ -698,6 +710,10 @@ class DefaultResidentCompiler implements ResidentCompiler {
     final String frontendServer = _artifacts.getArtifactPath(
       Artifact.frontendServerSnapshotForEngineDartSdk
     );
+
+    await AspectdHook.enableAspectd();
+    bool aopConfig = AspectdHook.configFileExists();
+
     final List<String> command = <String>[
       _artifacts.getHostArtifact(HostArtifact.engineDartBinary).path,
       '--disable-dart-dev',
@@ -748,6 +764,10 @@ class DefaultResidentCompiler implements ResidentCompiler {
       if (platformDill != null) ...<String>[
         '--platform',
         platformDill!,
+      ],
+      if (aopConfig) ...<String>[
+        '--aop',
+        '1',
       ],
       if (unsafePackageSerialization == true) '--unsafe-package-serialization',
       ...?extraFrontEndOptions,

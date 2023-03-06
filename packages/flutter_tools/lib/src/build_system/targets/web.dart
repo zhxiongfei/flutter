@@ -24,6 +24,7 @@ import '../build_system.dart';
 import '../depfile.dart';
 import 'assets.dart';
 import 'localizations.dart';
+import '../../aop/aop_manager.dart';
 
 /// Whether the application has web plugins.
 const String kHasWebPlugins = 'HasWebPlugins';
@@ -246,6 +247,9 @@ class Dart2JSTarget extends Target {
     if (kernelResult.exitCode != 0) {
       throw Exception(_collectOutput(kernelResult));
     }
+
+    await AopManager.hookSnapshotCommand(
+        environment.buildDir.childFile('app.dill').path, buildMode);
 
     final String dart2jsOptimization = environment.defines[kDart2jsOptimization];
     final File outputJSFile = environment.buildDir.childFile('main.dart.js');
