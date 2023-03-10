@@ -18,6 +18,7 @@ import 'base/logger.dart';
 import 'base/platform.dart';
 import 'build_info.dart';
 import 'convert.dart';
+import 'aop/aspectd.dart';
 
 /// The target model describes the set of core libraries that are available within
 /// the SDK.
@@ -79,7 +80,7 @@ class StdoutHandler {
     required Logger logger,
     required FileSystem fileSystem,
   }) : _logger = logger,
-       _fileSystem = fileSystem {
+        _fileSystem = fileSystem {
     reset();
   }
 
@@ -199,12 +200,12 @@ class KernelCompiler {
     required String fileSystemScheme,
     @visibleForTesting StdoutHandler? stdoutHandler,
   }) : _logger = logger,
-       _fileSystem = fileSystem,
-       _artifacts = artifacts,
-       _processManager = processManager,
-       _fileSystemScheme = fileSystemScheme,
-       _fileSystemRoots = fileSystemRoots,
-       _stdoutHandler = stdoutHandler ?? StdoutHandler(logger: logger, fileSystem: fileSystem);
+        _fileSystem = fileSystem,
+        _artifacts = artifacts,
+        _processManager = processManager,
+        _fileSystemScheme = fileSystemScheme,
+        _fileSystemRoots = fileSystemRoots,
+        _stdoutHandler = stdoutHandler ?? StdoutHandler(logger: logger, fileSystem: fileSystem);
 
   final FileSystem _fileSystem;
   final Artifacts _artifacts;
@@ -235,8 +236,11 @@ class KernelCompiler {
     required List<String> dartDefines,
     required PackageConfig packageConfig,
   }) async {
+
+    await AspectdHook.enableAspectd();
+
     final String frontendServer = _artifacts.getArtifactPath(
-      Artifact.frontendServerSnapshotForEngineDartSdk
+        Artifact.frontendServerSnapshotForEngineDartSdk
     );
     // This is a URI, not a file path, so the forward slash is correct even on Windows.
     if (!sdkRoot.endsWith('/')) {
@@ -264,6 +268,18 @@ class KernelCompiler {
         mainUri = newMainDart.path;
       }
     }
+
+    print('[aop]: before configFileExists');
+
+
+    bool aopConfig = AspectdHook.configFileExists();
+
+
+    print('[aop]: after configFileExists');
+
+    final isAop = aopConfig.toString();
+
+    print('[aop]: aopConfig is $isAop');
 
     final List<String> command = <String>[
       engineDartPath,
@@ -311,20 +327,26 @@ class KernelCompiler {
         '--platform',
         platformDill,
       ],
+      if (aopConfig) ...<String>[
+        '--aop',
+        '1',
+      ],
       ...?extraFrontEndOptions,
       mainUri,
     ];
+
+    print(command.join(' '));
 
     _logger.printTrace(command.join(' '));
     final Process server = await _processManager.start(command);
 
     server.stderr
-      .transform<String>(utf8.decoder)
-      .listen(_logger.printError);
+        .transform<String>(utf8.decoder)
+        .listen(_logger.printError);
     server.stdout
-      .transform<String>(utf8.decoder)
-      .transform<String>(const LineSplitter())
-      .listen(_stdoutHandler.handler);
+        .transform<String>(utf8.decoder)
+        .transform<String>(const LineSplitter())
+        .listen(_stdoutHandler.handler);
     final int exitCode = await server.exitCode;
     if (exitCode == 0) {
       return _stdoutHandler.compilerOutput?.future;
@@ -348,13 +370,13 @@ abstract class _CompilationRequest {
 
 class _RecompileRequest extends _CompilationRequest {
   _RecompileRequest(
-    Completer<CompilerOutput?> completer,
-    this.mainUri,
-    this.invalidatedFiles,
-    this.outputPath,
-    this.packageConfig,
-    this.suppressErrors,
-  ) : super(completer);
+      Completer<CompilerOutput?> completer,
+      this.mainUri,
+      this.invalidatedFiles,
+      this.outputPath,
+      this.packageConfig,
+      this.suppressErrors,
+      ) : super(completer);
 
   Uri mainUri;
   List<Uri>? invalidatedFiles;
@@ -369,14 +391,14 @@ class _RecompileRequest extends _CompilationRequest {
 
 class _CompileExpressionRequest extends _CompilationRequest {
   _CompileExpressionRequest(
-    Completer<CompilerOutput?> completer,
-    this.expression,
-    this.definitions,
-    this.typeDefinitions,
-    this.libraryUri,
-    this.klass,
-    this.isStatic,
-  ) : super(completer);
+      Completer<CompilerOutput?> completer,
+      this.expression,
+      this.definitions,
+      this.typeDefinitions,
+      this.libraryUri,
+      this.klass,
+      this.isStatic,
+      ) : super(completer);
 
   String expression;
   List<String>? definitions;
@@ -392,15 +414,15 @@ class _CompileExpressionRequest extends _CompilationRequest {
 
 class _CompileExpressionToJsRequest extends _CompilationRequest {
   _CompileExpressionToJsRequest(
-    Completer<CompilerOutput?> completer,
-    this.libraryUri,
-    this.line,
-    this.column,
-    this.jsModules,
-    this.jsFrameValues,
-    this.moduleName,
-    this.expression,
-  ) : super(completer);
+      Completer<CompilerOutput?> completer,
+      this.libraryUri,
+      this.line,
+      this.column,
+      this.jsModules,
+      this.jsFrameValues,
+      this.moduleName,
+      this.expression,
+      ) : super(completer);
 
   final String? libraryUri;
   final int line;
@@ -463,23 +485,23 @@ abstract class ResidentCompiler {
   /// Binary file name is returned if compilation was successful, otherwise
   /// null is returned.
   Future<CompilerOutput?> recompile(
-    Uri mainUri,
-    List<Uri>? invalidatedFiles, {
-    required String outputPath,
-    required PackageConfig packageConfig,
-    required String projectRootPath,
-    required FileSystem fs,
-    bool suppressErrors = false,
-  });
+      Uri mainUri,
+      List<Uri>? invalidatedFiles, {
+        required String outputPath,
+        required PackageConfig packageConfig,
+        required String projectRootPath,
+        required FileSystem fs,
+        bool suppressErrors = false,
+      });
 
   Future<CompilerOutput?> compileExpression(
-    String expression,
-    List<String>? definitions,
-    List<String>? typeDefinitions,
-    String? libraryUri,
-    String? klass,
-    bool isStatic,
-  );
+      String expression,
+      List<String>? definitions,
+      List<String>? typeDefinitions,
+      String? libraryUri,
+      String? klass,
+      bool isStatic,
+      );
 
   /// Compiles [expression] in [libraryUri] at [line]:[column] to JavaScript
   /// in [moduleName].
@@ -502,14 +524,14 @@ abstract class ResidentCompiler {
   /// Returns a [CompilerOutput] including the name of the file containing the
   /// compilation result and a number of errors.
   Future<CompilerOutput?> compileExpressionToJs(
-    String libraryUri,
-    int line,
-    int column,
-    Map<String, String> jsModules,
-    Map<String, String> jsFrameValues,
-    String moduleName,
-    String expression,
-  );
+      String libraryUri,
+      int line,
+      int column,
+      Map<String, String> jsModules,
+      Map<String, String> jsFrameValues,
+      String moduleName,
+      String expression,
+      );
 
   /// Should be invoked when results of compilation are accepted by the client.
   ///
@@ -532,37 +554,37 @@ abstract class ResidentCompiler {
 @visibleForTesting
 class DefaultResidentCompiler implements ResidentCompiler {
   DefaultResidentCompiler(
-    String sdkRoot, {
-    required this.buildMode,
-    required Logger logger,
-    required ProcessManager processManager,
-    required Artifacts artifacts,
-    required Platform platform,
-    required FileSystem fileSystem,
-    this.testCompilation = false,
-    this.trackWidgetCreation = true,
-    this.packagesPath,
-    List<String> fileSystemRoots = const <String>[],
-    this.fileSystemScheme,
-    this.initializeFromDill,
-    this.targetModel = TargetModel.flutter,
-    this.unsafePackageSerialization = false,
-    this.extraFrontEndOptions,
-    this.platformDill,
-    List<String>? dartDefines,
-    this.librariesSpec,
-    @visibleForTesting StdoutHandler? stdoutHandler,
-  }) : assert(sdkRoot != null),
-       _logger = logger,
-       _processManager = processManager,
-       _artifacts = artifacts,
-       _stdoutHandler = stdoutHandler ?? StdoutHandler(logger: logger, fileSystem: fileSystem),
-       _platform = platform,
-       dartDefines = dartDefines ?? const <String>[],
-       // This is a URI, not a file path, so the forward slash is correct even on Windows.
-       sdkRoot = sdkRoot.endsWith('/') ? sdkRoot : '$sdkRoot/',
-       // Make a copy, we might need to modify it later.
-       fileSystemRoots = List<String>.from(fileSystemRoots);
+      String sdkRoot, {
+        required this.buildMode,
+        required Logger logger,
+        required ProcessManager processManager,
+        required Artifacts artifacts,
+        required Platform platform,
+        required FileSystem fileSystem,
+        this.testCompilation = false,
+        this.trackWidgetCreation = true,
+        this.packagesPath,
+        List<String> fileSystemRoots = const <String>[],
+        this.fileSystemScheme,
+        this.initializeFromDill,
+        this.targetModel = TargetModel.flutter,
+        this.unsafePackageSerialization = false,
+        this.extraFrontEndOptions,
+        this.platformDill,
+        List<String>? dartDefines,
+        this.librariesSpec,
+        @visibleForTesting StdoutHandler? stdoutHandler,
+      }) : assert(sdkRoot != null),
+        _logger = logger,
+        _processManager = processManager,
+        _artifacts = artifacts,
+        _stdoutHandler = stdoutHandler ?? StdoutHandler(logger: logger, fileSystem: fileSystem),
+        _platform = platform,
+        dartDefines = dartDefines ?? const <String>[],
+  // This is a URI, not a file path, so the forward slash is correct even on Windows.
+        sdkRoot = sdkRoot.endsWith('/') ? sdkRoot : '$sdkRoot/',
+  // Make a copy, we might need to modify it later.
+        fileSystemRoots = List<String>.from(fileSystemRoots);
 
   final Logger _logger;
   final ProcessManager _processManager;
@@ -605,14 +627,14 @@ class DefaultResidentCompiler implements ResidentCompiler {
 
   @override
   Future<CompilerOutput?> recompile(
-    Uri mainUri,
-    List<Uri>? invalidatedFiles, {
-    required String outputPath,
-    required PackageConfig packageConfig,
-    bool suppressErrors = false,
-    String? projectRootPath,
-    FileSystem? fs,
-  }) async {
+      Uri mainUri,
+      List<Uri>? invalidatedFiles, {
+        required String outputPath,
+        required PackageConfig packageConfig,
+        bool suppressErrors = false,
+        String? projectRootPath,
+        FileSystem? fs,
+      }) async {
     assert(outputPath != null);
     if (!_controller.hasListener) {
       _controller.stream.listen(_handleCompilationRequest);
@@ -633,7 +655,7 @@ class DefaultResidentCompiler implements ResidentCompiler {
     }
     final Completer<CompilerOutput?> completer = Completer<CompilerOutput?>();
     _controller.add(
-      _RecompileRequest(completer, mainUri, invalidatedFiles, outputPath, packageConfig, suppressErrors)
+        _RecompileRequest(completer, mainUri, invalidatedFiles, outputPath, packageConfig, suppressErrors)
     );
     return completer.future;
   }
@@ -644,7 +666,7 @@ class DefaultResidentCompiler implements ResidentCompiler {
     _stdoutHandler._suppressCompilerMessages = request.suppressErrors;
 
     final String mainUri = request.packageConfig.toPackageUri(request.mainUri)?.toString() ??
-      toMultiRootPath(request.mainUri, fileSystemScheme, fileSystemRoots, _platform.isWindows);
+        toMultiRootPath(request.mainUri, fileSystemScheme, fileSystemRoots, _platform.isWindows);
 
     final Process? server = _server;
     if (server == null) {
@@ -692,12 +714,22 @@ class DefaultResidentCompiler implements ResidentCompiler {
   }
 
   Future<CompilerOutput?> _compile(
-    String scriptUri,
-    String? outputPath,
-  ) async {
+      String scriptUri,
+      String? outputPath,
+      ) async {
     final String frontendServer = _artifacts.getArtifactPath(
-      Artifact.frontendServerSnapshotForEngineDartSdk
+        Artifact.frontendServerSnapshotForEngineDartSdk
     );
+
+    await AspectdHook.enableAspectd();
+
+    print('[aop]: before configFileExists');
+    bool aopConfig = AspectdHook.configFileExists();
+    print('[aop]: after configFileExists');
+
+    final isAop = aopConfig.toString();
+    print('[aop]: aopConfig is $isAop');
+
     final List<String> command = <String>[
       _artifacts.getHostArtifact(HostArtifact.engineDartBinary).path,
       '--disable-dart-dev',
@@ -749,15 +781,22 @@ class DefaultResidentCompiler implements ResidentCompiler {
         '--platform',
         platformDill!,
       ],
+      if (aopConfig) ...<String>[
+        '--aop',
+        '1',
+      ],
       if (unsafePackageSerialization == true) '--unsafe-package-serialization',
       ...?extraFrontEndOptions,
     ];
+
+    print('[aop]: $command.join(' ')');
+
     _logger.printTrace(command.join(' '));
     _server = await _processManager.start(command);
     _server?.stdout
-      .transform<String>(utf8.decoder)
-      .transform<String>(const LineSplitter())
-      .listen(
+        .transform<String>(utf8.decoder)
+        .transform<String>(const LineSplitter())
+        .listen(
         _stdoutHandler.handler,
         onDone: () {
           // when outputFilename future is not completed, but stdout is closed
@@ -769,9 +808,9 @@ class DefaultResidentCompiler implements ResidentCompiler {
         });
 
     _server?.stderr
-      .transform<String>(utf8.decoder)
-      .transform<String>(const LineSplitter())
-      .listen(_logger.printError);
+        .transform<String>(utf8.decoder)
+        .transform<String>(const LineSplitter())
+        .listen(_logger.printError);
 
     unawaited(_server?.exitCode.then((int code) {
       if (code != 0) {
@@ -787,13 +826,13 @@ class DefaultResidentCompiler implements ResidentCompiler {
 
   @override
   Future<CompilerOutput?> compileExpression(
-    String expression,
-    List<String>? definitions,
-    List<String>? typeDefinitions,
-    String? libraryUri,
-    String? klass,
-    bool isStatic,
-  ) async {
+      String expression,
+      List<String>? definitions,
+      List<String>? typeDefinitions,
+      String? libraryUri,
+      String? klass,
+      bool isStatic,
+      ) async {
     if (!_controller.hasListener) {
       _controller.stream.listen(_handleCompilationRequest);
     }
@@ -833,14 +872,14 @@ class DefaultResidentCompiler implements ResidentCompiler {
 
   @override
   Future<CompilerOutput?> compileExpressionToJs(
-    String libraryUri,
-    int line,
-    int column,
-    Map<String, String> jsModules,
-    Map<String, String> jsFrameValues,
-    String moduleName,
-    String expression,
-  ) {
+      String libraryUri,
+      int line,
+      int column,
+      Map<String, String> jsModules,
+      Map<String, String> jsFrameValues,
+      String moduleName,
+      String expression,
+      ) {
     if (!_controller.hasListener) {
       _controller.stream.listen(_handleCompilationRequest);
     }
