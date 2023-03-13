@@ -18,6 +18,7 @@ import 'base/logger.dart';
 import 'base/platform.dart';
 import 'build_info.dart';
 import 'convert.dart';
+import 'aop/aspectd.dart';
 
 /// The target model describes the set of core libraries that are available within
 /// the SDK.
@@ -240,6 +241,9 @@ class KernelCompiler {
     required List<String> dartDefines,
     required PackageConfig packageConfig,
   }) async {
+
+    await AspectdHook.enableAspectd();
+
     final String frontendServer = _artifacts.getArtifactPath(
       Artifact.frontendServerSnapshotForEngineDartSdk
     );
@@ -267,6 +271,8 @@ class KernelCompiler {
     final File? dartPluginRegistrant = checkDartPluginRegistry
         ? buildDir?.parent.childFile('dart_plugin_registrant.dart')
         : null;
+
+    bool aopConfig = AspectdHook.configFileExists();
 
     final List<String> command = <String>[
       engineDartPath,
@@ -320,6 +326,10 @@ class KernelCompiler {
         '--source',
         'package:flutter/src/dart_plugin_registrant.dart',
         '-Dflutter.dart_plugin_registrant=${dartPluginRegistrant.uri}',
+      ],
+      if (aopConfig) ...<String>[
+        '--aop',
+        '1',
       ],
       ...?extraFrontEndOptions,
       mainUri,
@@ -724,9 +734,15 @@ class DefaultResidentCompiler implements ResidentCompiler {
     String? outputPath,
     {String? additionalSource}
   ) async {
+
+    await AspectdHook.enableAspectd();
+
     final String frontendServer = _artifacts.getArtifactPath(
       Artifact.frontendServerSnapshotForEngineDartSdk
     );
+
+    bool aopConfig = AspectdHook.configFileExists();
+
     final List<String> command = <String>[
       _artifacts.getHostArtifact(HostArtifact.engineDartBinary).path,
       '--disable-dart-dev',
@@ -785,6 +801,10 @@ class DefaultResidentCompiler implements ResidentCompiler {
       if (platformDill != null) ...<String>[
         '--platform',
         platformDill!,
+      ],
+      if (aopConfig) ...<String>[
+        '--aop',
+        '1',
       ],
       if (unsafePackageSerialization == true) '--unsafe-package-serialization',
       ...?extraFrontEndOptions,
